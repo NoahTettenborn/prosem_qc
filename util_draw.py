@@ -4,6 +4,7 @@ from tkinter import Image
 from PIL import Image
 from aggdraw import Draw, Brush, Path, Pen
 import PIL.ImageDraw
+import time
 
 class HexGeneratorQRS(object):
     CONST = math.sqrt(3) / 2
@@ -114,14 +115,15 @@ class DrawingGenerator(object):
         yield x
         yield y
 
-def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, max_yield=10):
-    image = Image.new("RGB", (2000, 2000), "white")
+def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, N, fname, max_yield=10):
+    size = (2 * N + 1) * 60
+    image = Image.new("RGB", (size, size), "white")
     draw = Draw(image)
     draw_pil = PIL.ImageDraw.Draw(image)
     #hex_gen_qrs = HexGeneratorQRS(30, 2000, 2000)
     #city_gen = CityGeneratorQRS(30, 2000, 2000)
     #gen_strat = StratGeneratorQRS(30, 2000, 2000)
-    gen = DrawingGenerator(30, 2000, 2000)
+    gen = DrawingGenerator(30, size, size)
     for pos , yiel in yields.items():
         gen.update_coordinates(*pos)
         color = color_map(yiel, fw[pos], strat[pos], max_yield)
@@ -133,18 +135,25 @@ def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, max_yield=10):
             draw.line(tuple(city), Pen("blue", 5))
         if strat[pos]:
             strategic = gen.h_line()
-            draw.line(tuple(strategic), Pen("white", 5))
+            draw.line(tuple(strategic), Pen("purple", 5))
     draw.flush()
-    image.show()
+    image.save(fname)
 
 
 def color_map(num_yield, has_fw, has_strat, max_yield):
     red, green, blue = (0, 0, 0)
     ratio = num_yield / max_yield
     if has_fw:
-        green = int(255 * ratio)
+        if ratio > 0.5:
+            green = 255
+            red = 255 - int(255 * ratio)
+        else:
+            red = 255
+            green = int(255 * ratio)
     else:
-        red = int(255 * (1 - ratio))
+        red = int(200 * ratio) + 55
+        green = int(200 * ratio) + 55
+        blue = int(150 * ratio) + 55
     #if has_strat:
     #    blue = 255
     return red, green, blue
