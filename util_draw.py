@@ -1,72 +1,10 @@
 import math
 from random import randint
 from tkinter import Image
-from PIL import Image
-from aggdraw import Draw, Brush, Path, Pen
+from PIL import Image, ImageDraw, ImageFont
+from aggdraw import Draw, Brush, Font, Pen
 import PIL.ImageDraw
 import time
-
-class HexGeneratorQRS(object):
-    CONST = math.sqrt(3) / 2
-    CONST_2 = 1.5
-    def __init__(self, edge_length, x_length, y_length):
-        self.edge_length = edge_length
-        self.y_length = y_length
-        self.x_length = x_length
-
-    def __call__(self, q, r, s):
-        x = self.edge_length * self.CONST * (q - s) + self.x_length / 2
-        y = -self.edge_length * self.CONST_2 * r + self.y_length / 2
-        for angle in range(30, 390, 60):
-            x += math.cos(math.radians(angle)) * self.edge_length
-            y += math.sin(math.radians(angle)) * self.edge_length
-            yield x
-            yield y
-
-class CityGeneratorQRS(object):
-    CONST = math.sqrt(3) / 2
-    CONST_2 = 1.5
-
-    def __init__(self, edge_length, x_length, y_length):
-        self.edge_length = edge_length
-        self.y_length = y_length
-        self.x_length = x_length
-
-    def to_canonical(self, q, r, s):
-        x = self.edge_length * self.CONST * (q - s) + self.x_length / 2
-        y = -self.edge_length * self.CONST_2 * r + self.y_length / 2
-        return x, y
-
-    def __call__(self, q, r, s):
-        x, y = self.to_canonical(q, r, s)
-        yield x
-        yield y
-        y += self.edge_length * 2
-        yield x
-        yield y
-
-class StratGeneratorQRS(object):
-    CONST = math.sqrt(3) / 2
-    CONST_2 = 1.5
-
-    def __init__(self, edge_length, x_length, y_length):
-        self.edge_length = edge_length
-        self.y_length = y_length
-        self.x_length = x_length
-
-    def to_canonical(self, q, r, s):
-        x = self.edge_length * self.CONST * (q - s) + self.x_length / 2
-        y = -self.edge_length * self.CONST_2 * r + self.y_length / 2
-        return x, y
-
-    def __call__(self, q, r, s):
-        x, y = self.to_canonical(q, r, s)
-        x, y = x - self.CONST * self.edge_length, y + self.edge_length
-        yield x
-        yield y
-        x += self.edge_length * 2 * self.CONST
-        yield x
-        yield y
 
 class DrawingGenerator(object):
     CONST = math.sqrt(3) / 2
@@ -85,10 +23,13 @@ class DrawingGenerator(object):
             y = math.sin(math.radians(angle)) * self.edge_length
             self.hex_list[angle] = (x, y)
 
+    def set_coordinates(self, x, y):
+        self.curr_x = x
+        self.curr_y = y
+
     def update_coordinates(self, q, r, s):
         self.curr_x = self.edge_length * self.CONST * (q - s) + self.x_length / 2
         self.curr_y = -self.edge_length * self.CONST_2 * r + self.y_length / 2
-        #return self.curr_x, self.curr_y
 
     def hex(self):
         x, y = self.curr_x, self.curr_y
@@ -115,19 +56,38 @@ class DrawingGenerator(object):
         yield x
         yield y
 
-def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, N, fname, max_yield=10):
+def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, N, fname, txt, max_yield=10):
     size = (2 * N + 1) * 60
     image = Image.new("RGB", (size, size), "white")
     draw = Draw(image)
-    draw_pil = PIL.ImageDraw.Draw(image)
-    #hex_gen_qrs = HexGeneratorQRS(30, 2000, 2000)
-    #city_gen = CityGeneratorQRS(30, 2000, 2000)
-    #gen_strat = StratGeneratorQRS(30, 2000, 2000)
     gen = DrawingGenerator(30, size, size)
     for pos , yiel in yields.items():
         gen.update_coordinates(*pos)
-        color = color_map(yiel, fw[pos], strat[pos], max_yield)
-        #hex = hex_gen_qrs(*pos)
+        color = color_map(yiel, fw[pos], max_yield)
+        hex = gen.hex()
+        hex = list(hex)
+        draw.polygon(hex, Brush(color))
+        if cities[pos]:
+            city = gen.v_line()
+            draw.line(tuple(city), Pen("rgb(26, 83, 255)", 10))
+            draw.polygon(hex, Pen("rgb(26, 83, 255)", 5))
+        if strat[pos]:
+            strategic = gen.h_line()
+            draw.line(tuple(strategic), Pen("purple", 5))
+    font = Font((0, 0, 0), "/Library/Fonts/Microsoft/Arial.ttf", 15)
+    draw.text((0, 0), txt, font)
+
+    draw.flush()
+    image.save(fname)
+
+def draw_weights(weights: dict, cities:dict, strat:dict, N, fname, max_weight):
+    size = (2 * N + 1) * 60
+    image = Image.new("RGB", (size, size), "white")
+    draw = Draw(image)
+    gen = DrawingGenerator(30, size, size)
+    for pos , weight in weights.items():
+        gen.update_coordinates(*pos)
+        color = color_map(-weight, has_fw=True, max_yield=max_weight)
         hex = gen.hex()
         draw.polygon(list(hex), Brush(color))
         if cities[pos]:
@@ -139,8 +99,61 @@ def draw_grid(yields: dict, fw: dict, strat: dict, cities: dict, N, fname, max_y
     draw.flush()
     image.save(fname)
 
+def draw_explanation(yields: dict, fw: dict, strat: dict, cities: dict, N, fname, max_yield=10):
+    size = (2 * N + 1) * 90
+    image = Image.new("RGB", (size, size), "white")
+    draw = Draw(image)
+    gen = DrawingGenerator(30, size, size)
+    for pos , yiel in yields.items():
+        gen.update_coordinates(*pos)
+        color = color_map(yiel, fw[pos], max_yield)
+        #hex = hex_gen_qrs(*pos)
+        hex = gen.hex()
+        hex = list(hex)
+        draw.polygon(hex, Brush(color))
+        if cities[pos]:
+            city = gen.v_line()
+            draw.line(tuple(city), Pen("rgb(26, 83, 255)", 10))
+            draw.polygon(hex, Pen("rgb(26, 83, 255)", 5))
+        if strat[pos]:
+            strategic = gen.h_line()
+            draw.line(tuple(strategic), Pen("purple", 5))
+    
+    font = Font((0, 0, 0), "/Library/Fonts/Microsoft/Arial.ttf", 30)
+    txt1 = "Grayscale: No freshwater, lighter means higher yields"
+    txt2 = "Red to green: Has fresh water, greener means higher yields"
+    txt3 = ": Strategic resorce"
+    txt4 = ": City"
+    gen.set_coordinates(size/20, size/20)
+    hex=list(gen.hex())
+    draw.polygon(hex, Brush(color_map(5, False, 10)))
+    draw.text((size/10, size/20+10), txt1, font)
 
-def color_map(num_yield, has_fw, has_strat, max_yield):
+    gen.set_coordinates(size/20-25, size/10)
+    hex=list(gen.hex())
+    draw.polygon(hex, Brush(color_map(3, True, 10)))
+
+    gen.set_coordinates(size/20 + 25, size/10)
+    hex=list(gen.hex())
+    draw.polygon(hex, Brush(color_map(7, True, 10)))
+    draw.text((size/10, size/10+10), txt2, font)
+
+    gen.set_coordinates(size/20, 3*size/20)
+    strategic = gen.h_line()
+    draw.line(tuple(strategic), Pen("purple", 5))
+    draw.text((size/10, 3*size/20+10), txt3, font)
+    
+    gen.set_coordinates(size/20, size/5)
+    city=gen.v_line()
+    hex = list(gen.hex())
+    draw.line(tuple(city), Pen("rgb(26, 83, 255)", 10))
+    draw.polygon(hex, Pen("rgb(26, 83, 255)", 5))
+    draw.text((size/10, size/5+10), txt4, font)
+
+    draw.flush()
+    image.save(fname)
+
+def color_map(num_yield, has_fw, max_yield):
     red, green, blue = (0, 0, 0)
     ratio = num_yield / max_yield
     if has_fw:
@@ -158,28 +171,5 @@ def color_map(num_yield, has_fw, has_strat, max_yield):
     #    blue = 255
     return red, green, blue
 
-def main():
-    image = Image.new("RGB", (2000, 2000), "white")
-    draw = Draw(image)
-    hex_gen_qrs = HexGeneratorQRS(30, 2000, 2000)
-    N = 15
-    for q in range(-N, N + 1):
-        for r in range(max(-N, -q-N), min(N, -q + N) + 1):
-            s = -q - r
-            color = randint(10, 100), randint(10, 200), randint(10, 300)
-            hex = hex_gen_qrs(q, r, s)
-            draw.polygon(list(hex), Brush(color))
-    draw.flush()
-    image.show()
-
-def test_line():
-    image = Image.new("RGB", (2000, 2000), "white")
-    draw_pil = PIL.ImageDraw.Draw(image)
-    draw = Draw(image)
-    draw_pil.line((0, 0, 10, 10), fill=128, width=3)
-    draw.flush()
-    image.show()
-
-
 if __name__ == "__main__":
-    test_line()
+    print("Hey what are you doing, don't execute me!")
